@@ -1,82 +1,86 @@
-# HNG12-BACKENDSTAGEZEROTASK
+# Backend Wizards — Stage 0: Dynamic Profile Endpoint
 
-## Project Description
-This project is a backend API built using Fastify, designed to classify numbers based on various mathematical properties. The API provides information about whether a number is prime, perfect, or an Armstrong number, and it also fetches a fun fact about the number from an external API.
+## Overview
+This project implements a simple RESTful API using Node.js and Fastify that exposes a `/me` endpoint. The endpoint returns a JSON response with user profile information, a dynamic timestamp, and a random cat fact fetched from the [Cat Facts API](https://catfact.ninja/fact). 
+
+The implementation follows best practices including error handling for the external API, timeouts, logging, and CORS support.
 
 ## Features
-- Classify numbers as prime, perfect, or Armstrong.
-- Fetch fun facts about numbers from the Numbers API.
-- Return responses in JSON format.
+- **GET /me**: Returns user profile, current UTC timestamp (ISO 8601), and a fresh cat fact.
+- Graceful degradation: If the Cat Facts API fails, a fallback fact is used while maintaining the "success" status.
+- Dynamic data: Timestamp updates on every request; cat fact is fetched anew each time (no caching).
+- Logging: Built-in Fastify logger for debugging.
+- CORS: Enabled for cross-origin requests.
+
+## Tech Stack
+- Node.js (^18.0.0)
+- Fastify (^4.28.1) as the web framework
+- @fastify/cors (^9.0.1) for CORS handling
+- dotenv
 
 ## Setup Instructions
-To run the project locally, follow these steps:
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/GrimTech/HNG12-BACKENDSTAGEZEROTASK.git
-   cd HNG12-BACKENDSTAGEZEROTASK
-   ```
+### Prerequisites
+- Node.js (v18+)
+- npm (comes with Node.js)
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+### Installation
+1. Clone the repository
 
-3. **Run the application**:
-   ```bash
-   npm start
-   ```
+  git clone https://github.com/slattware/hng13-stage0-backend.git
 
-4. **Access the API**:
-   Open your browser or use a tool like Postman to access the API at `http://localhost:3000/api/classify-number?number=<your_number>`.
+2. Install dependencies
 
-## API Documentation
+npm install
 
-### Endpoint URL
-- `GET /api/classify-number?number=<your_number>`
+3. Set environment variables (optional but recommended):
+Create a `.env` file in the root directory:
 
-### Request Format
-- **Method**: GET
-- **Query Parameters**:
-  - `number`: The number to classify (must be an integer).
+Note: The app falls back to default values if env vars are not set.
 
-### Response Format
-- **Success Response** (HTTP Status 200):
+### Running Locally
+1. Start the development server:
+
+2. The server will listen on `http://localhost:3000` (or the PORT env var).
+
+3. Test the endpoint:
+- Visit `http://localhost:3000/me` in your browser or use curl:
+  ```
+  curl http://localhost:3000/me
+  ```
+- Expected response:
   ```json
   {
-      "number": 28,
-      "is_prime": false,
-      "is_perfect": true,
-      "digit_sum": 10,
-      "properties": ["even", "armstrong"],
-      "fun_fact": "28 is a perfect number."
+    "status": "success",
+    "user": {
+      "email": "your-email@example.com",
+      "name": "Your Full Name",
+      "stack": "Node.js/Fastify"
+    },
+    "timestamp": "2025-10-19T10:30:45.123Z",
+    "fact": "Cats have over 20 muscles that control their ears."
   }
   ```
 
-- **Error Response** (HTTP Status 400):
-  ```json
-  {
-      "error": true,
-      "number": "Invalid number provided."
-  }
-  ```
+### Testing
+- **Manual Testing**: Use tools like Postman, curl, or browser to hit `/me` multiple times. Verify:
+- Timestamp updates.
+- Cat fact changes (or falls back if API down).
+- JSON structure and Content-Type.
+- Verify from multiple networks to ensure accessibility.
 
-- **Error Response** (HTTP Status 500):
-  ```json
-  {
-      "error": "Internal Server Error",
-      "message": "An unexpected error occurred while processing your request."
-  }
-  ```
 
-### Example Usage
-To classify a number, you can use the following curl command:
+### Environment Variables
+| Variable      | Description                  | Default Value              | Required? |
+|---------------|------------------------------|----------------------------|-----------|
+| USER_EMAIL   | Your email address           | 'your-email@example.com'  | No       |
+| USER_NAME    | Your full name               | 'Your Full Name'           | No       |
+| USER_STACK   | Backend stack (e.g., 'Node.js/Fastify') | 'Node.js/Fastify' | No       |
+| PORT         | Server port                  | 3000                       | No       |
 
-```bash
-curl -X GET "http://localhost:3000/api/classify-number?number=28"
-```
+### Notes
+- **Error Handling**: Network errors/timeouts log warnings but return a fallback to keep the response "success".
+- **Security**: In production, validate/sanitize inputs, use HTTPS, and restrict CORS origins.
 
-This will return a JSON response with the classification of the number, including whether it is prime, perfect, and any fun fact associated with it.
-
-## Backlink
-For more information on hiring developers, visit: [Hire Node.js Developers](https://hng.tech/hire/nodejs-developers)
+## License
+MIT License - see LICENSE file.
