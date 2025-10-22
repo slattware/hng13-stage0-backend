@@ -1,86 +1,80 @@
-# Backend Wizards — Stage 0: Dynamic Profile Endpoint
+String Analyzer Service
+A RESTful API service built with Fastify that analyzes strings and stores their computed properties.
+Setup Instructions
+Prerequisites
 
-## Overview
-This project implements a simple RESTful API using Node.js and Fastify that exposes a `/me` endpoint. The endpoint returns a JSON response with user profile information, a dynamic timestamp, and a random cat fact fetched from the [Cat Facts API](https://catfact.ninja/fact). 
+Node.js (v16 or higher)
+npm
 
-The implementation follows best practices including error handling for the external API, timeouts, logging, and CORS support.
+Installation
 
-## Features
-- **GET /me**: Returns user profile, current UTC timestamp (ISO 8601), and a fresh cat fact.
-- Graceful degradation: If the Cat Facts API fails, a fallback fact is used while maintaining the "success" status.
-- Dynamic data: Timestamp updates on every request; cat fact is fetched anew each time (no caching).
-- Logging: Built-in Fastify logger for debugging.
-- CORS: Enabled for cross-origin requests.
+Clone the repository:
 
-## Tech Stack
-- Node.js (^18.0.0)
-- Fastify (^4.28.1) as the web framework
-- @fastify/cors (^9.0.1) for CORS handling
-- dotenv
+git clone https://github.com/slattware/hng13-stage0-backend.git
+cd string-analyzer-service
 
-## Setup Instructions
 
-### Prerequisites
-- Node.js (v18+)
-- npm (comes with Node.js)
-
-### Installation
-1. Clone the repository
-
-  git clone https://github.com/slattware/hng13-stage0-backend.git
-
-2. Install dependencies
+Install dependencies:
 
 npm install
 
-3. Set environment variables (optional but recommended):
-Create a `.env` file in the root directory:
+Dependencies
 
-Note: The app falls back to default values if env vars are not set.
+fastify: ^4.0.0
+crypto: Node.js built-in module
 
-### Running Locally
-1. Start the development server:
+Running Locally
 
-2. The server will listen on `http://localhost:3000` (or the PORT env var).
+Start the server:
 
-3. Test the endpoint:
-- Visit `http://localhost:3000/me` in your browser or use curl:
-  ```
-  curl http://localhost:3000/me
-  ```
-- Expected response:
-  ```json
-  {
-    "status": "success",
-    "user": {
-      "email": "your-email@example.com",
-      "name": "Your Full Name",
-      "stack": "Node.js/Fastify"
-    },
-    "timestamp": "2025-10-19T10:30:45.123Z",
-    "fact": "Cats have over 20 muscles that control their ears."
-  }
-  ```
+npm start
 
-### Testing
-- **Manual Testing**: Use tools like Postman, curl, or browser to hit `/me` multiple times. Verify:
-- Timestamp updates.
-- Cat fact changes (or falls back if API down).
-- JSON structure and Content-Type.
-- Verify from multiple networks to ensure accessibility.
+The server will run on http://localhost:3000 by default.
+Environment Variables
 
+PORT: Port number for the server (default: 3000)
 
-### Environment Variables
-| Variable      | Description                  | Default Value              | Required? |
-|---------------|------------------------------|----------------------------|-----------|
-| USER_EMAIL   | Your email address           | 'your-email@example.com'  | No       |
-| USER_NAME    | Your full name               | 'Your Full Name'           | No       |
-| USER_STACK   | Backend stack (e.g., 'Node.js/Fastify') | 'Node.js/Fastify' | No       |
-| PORT         | Server port                  | 3000                       | No       |
+API Documentation
+POST /strings
+Analyze and store a new string.
 
-### Notes
-- **Error Handling**: Network errors/timeouts log warnings but return a fallback to keep the response "success".
-- **Security**: In production, validate/sanitize inputs, use HTTPS, and restrict CORS origins.
+Body: { "value": "string to analyze" }
+Success: 201 Created
+Errors: 400, 409, 422
 
-## License
-MIT License - see LICENSE file.
+GET /strings/:value
+Retrieve a specific string by value.
+
+Success: 200 OK
+Error: 404
+
+GET /strings
+Get all strings with optional filters.
+
+Query params: is_palindrome, min_length, max_length, word_count, contains_character
+Success: 200 OK
+Error: 400
+
+GET /strings/filter-by-natural-language
+Filter strings using natural language queries.
+
+Query param: query
+Success: 200 OK
+Errors: 400, 422
+
+DELETE /strings/:value
+Delete a specific string.
+
+Success: 204 No Content
+Error: 404
+
+Testing
+Test endpoints using tools like Postman or curl. Example:
+curl -X POST http://localhost:3000/strings -H "Content-Type: application/json" -d '{"value": "hello world"}'
+
+Notes
+
+Uses in-memory storage (Map) for simplicity
+SHA-256 hashing for unique string identification
+Case-insensitive palindrome checking
+Basic natural language query parsing
