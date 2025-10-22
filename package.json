@@ -1,6 +1,11 @@
 {
+  "name": "string-analyzer-service",
+  "version": "1.0.0",
+  "description": "RESTful API for string analysis",
+  "main": "index.js",
   "dependencies": {
     "@fastify/cors": "^10.0.2",
+    "crypto": "^1.0.1",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1"
   },
