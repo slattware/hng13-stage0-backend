@@ -1,10 +1,10 @@
-// index.js
-// import { Jimp } from "jimp";
 const express = require('express');
 const mysql = require('mysql2/promise'); // Using promise version for async/await
 const dotenv = require('dotenv');
 const axios = require('axios');
-const Jimp = require('jimp');
+const { Jimp, loadFont, measureText } = require("jimp");
+const { SANS_32_BLACK } = require("jimp/fonts");
+
 const fs = require('fs');
 const path = require('path');
 
@@ -84,7 +84,10 @@ app.post('/countries/refresh', async (req, res) => {
     // Fetch exchange rates
     let exchangeResponse;
     try {
-      exchangeResponse = await axios.get('https://open.er-api.com/v6/latest/USD');
+      exchangeResponse = await axios.get(`https://v6.exchangerate-api.com/v6/${process.env.EXCHANGE_RATE_API_KEY}/latest/USD`);
+      if ( exchangeResponse.result === "error") {
+        throw new Error(exchangeResponse['error-type'])
+      }
     } catch (err) {
       return res.status(503).json({
         error: 'External data source unavailable' + err,
@@ -93,7 +96,7 @@ app.post('/countries/refresh', async (req, res) => {
     }
 
     const countries = countriesResponse.data;
-    const rates = exchangeResponse.data.rates;
+    const rates = exchangeResponse.data.conversion_rates;
 
     for (const country of countries) {
       // Validation: Skip if required fields missing
@@ -177,24 +180,80 @@ async function generateSummaryImage() {
       'SELECT name, estimated_gdp FROM countries WHERE estimated_gdp IS NOT NULL ORDER BY estimated_gdp DESC LIMIT 5'
     );
 
-    // Create image
-    const width = 800;
+    // Create Image
+    const width = 1200;
     const height = 600;
-    const image = new Jimp(width, height, 0xffffffff); // White background
+    const font = await loadFont(SANS_32_BLACK);
+    const image = new Jimp({ width: width, height: height, color: 0xffffffff }); // White background
 
-    const font = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
+    let y = 50;
+    const lineHeight = 50;
+    // const maxTextWidth = width - 100; // 50px margin on each side
 
-    // Add text
-    image.print(font, 50, 50, `Total Countries: ${total}`);
-    image.print(font, 50, 100, `Last Refresh: ${lastRefresh}`);
-    image.print(font, 50, 150, 'Top 5 Countries by Estimated GDP:');
+    // --- TEXT WRAPPING HELPER ---
+    // const wrapText = (text, maxWidth) => {
+    //   const words = String(text).split(' ');
+    //   const lines = [];
+    //   let currentLine = '';
 
-    top5Rows.forEach((row, index) => {
-      image.print(font, 50, 200 + index * 50, `${index + 1}. ${row.name}: ${row.estimated_gdp.toFixed(2)}`);
+    //   for (const word of words) {
+    //     const testLine = currentLine ? `${currentLine} ${word}` : word;
+    //     const width = measureText(font, testLine);
+    //     if (width > maxWidth) {
+    //       if (currentLine) lines.push(currentLine);
+    //       currentLine = word;
+    //     } else {
+    //       currentLine = testLine;
+    //     }
+    //   }
+    //   if (currentLine) lines.push(currentLine);
+    //   return lines;
+    // };
+
+    // --- PRINT WITH WRAP ---
+    // const print = (text, align = 'left') => {
+    //   const x = align === 'center' ? width / 2 - (font.measureText(text) / 2) : 50;
+    //   const lines = wrapText(text, maxTextWidth);
+    //   lines.forEach(line => {
+    //     console.log(line)
+    //     console.log(typeof(line))
+    //     image.print({font, x, y, line});
+    //     y += lineHeight;
+    //   });
+    // };
+
+    // Helper to print centered or left-aligned
+    const print = (text, align = 'left') => {
+      const x = align === 'center' ? width / 2 - (font.measureText(text) / 2) : 50;
+      image.print({ font, x, y, text });
+      y += lineHeight;
+    };
+
+    print(`Total Countries: ${total}`);
+    print(`Last Refresh: ${lastRefresh}`);
+    print('');
+    print('Top 5 Countries by Estimated GDP:', 'left');
+    y += 20;
+
+    top5Rows.forEach((row, i) => {
+      const gdp = Number(row.estimated_gdp).toLocaleString('en-US', { maximumFractionDigits: 2 });
+      print(`${i + 1}. ${row.name}: $${gdp}`);
     });
 
-    // Save image
-    await image.writeAsync(path.join(cacheDir, 'summary.png'));
+    // Save
+    const imagePath = path.join(cacheDir, 'summary.png');
+    await image.write(imagePath);
+    console.log('Summary image generated:', imagePath);
+
+    // // Add text
+    // image.print(font, 50, 50, `Total Countries: ${total}`);
+    // image.print(font, 50, 100, `Last Refresh: ${lastRefresh}`);
+    // image.print(font, 50, 150, 'Top 5 Countries by Estimated GDP:');
+
+    // top5Rows.forEach((row, index) => {
+    //   image.print(font, 50, 200 + index * 50, `${index + 1}. ${row.name}: ${row.estimated_gdp.toFixed(2)}`);
+    // });
+
   } catch (err) {
     console.error('Error generating summary image:', err);
   }
