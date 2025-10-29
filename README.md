@@ -1,80 +1,52 @@
-String Analyzer Service
-A RESTful API service built with Fastify that analyzes strings and stores their computed properties.
-Setup Instructions
-Prerequisites
+# Country Currency & Exchange API
 
-Node.js (v16 or higher)
-npm
+## Description
+RESTful API that fetches, caches, and manages country data with exchange rates and estimated GDP.
 
-Installation
+## Setup Instructions
+1. Clone the repo: `git clone https://github.com/slattware/hng13-stage0-backend.git`
+2. Install dependencies: `npm install`
+3. Create `.env` file with:
 
-Clone the repository:
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=yourpassword
+DB_NAME=yourdbname
+PORT=3000
 
-git clone https://github.com/slattware/hng13-stage0-backend.git
-cd string-analyzer-service
+4. Create the MySQL database if it doesn't exist.
+5. Run locally: `node server.js`
 
+## Running Locally
+- Start the server: `node server.js`
+- Test endpoints with Postman or curl (e.g., POST http://localhost:3000/countries/refresh)
 
-Install dependencies:
+## Dependencies
+- express: API framework
+- mysql2: MySQL driver
+- dotenv: Environment variables
+- axios: HTTP client
+- jimp: Image generation
 
-npm install
+Install: `npm install express mysql2 dotenv axios jimp`
 
-Dependencies
+## Environment Variables
+- DB_HOST: MySQL host
+- DB_USER: MySQL user
+- DB_PASSWORD: MySQL password
+- DB_NAME: MySQL database name
+- PORT: Server port (default 3000)
 
-fastify: ^4.0.0
-crypto: Node.js built-in module
+## API Documentation
+- POST /countries/refresh: Refresh data
+- GET /countries?region=Africa&currency=NGN&sort=gdp_desc: List countries
+- GET /countries/:name: Get country
+- DELETE /countries/:name: Delete country
+- GET /status: Status
+- GET /countries/image: Summary image
 
-Running Locally
-
-Start the server:
-
-npm start
-
-The server will run on http://localhost:3000 by default.
-Environment Variables
-
-PORT: Port number for the server (default: 3000)
-
-API Documentation
-POST /strings
-Analyze and store a new string.
-
-Body: { "value": "string to analyze" }
-Success: 201 Created
-Errors: 400, 409, 422
-
-GET /strings/:value
-Retrieve a specific string by value.
-
-Success: 200 OK
-Error: 404
-
-GET /strings
-Get all strings with optional filters.
-
-Query params: is_palindrome, min_length, max_length, word_count, contains_character
-Success: 200 OK
-Error: 400
-
-GET /strings/filter-by-natural-language
-Filter strings using natural language queries.
-
-Query param: query
-Success: 200 OK
-Errors: 400, 422
-
-DELETE /strings/:value
-Delete a specific string.
-
-Success: 204 No Content
-Error: 404
-
-Testing
-Test endpoints using tools like Postman or curl. Example:
-curl -X POST http://localhost:3000/strings -H "Content-Type: application/json" -d '{"value": "hello world"}'
-
-Notes
-
-Uses in-memory storage (Map) for simplicity
-SHA-256 hashing for unique string identification
-Case-insensitive palindrome checking
-Basic natural language query parsing
+## Tests/Notes
+- Test refresh first to populate DB.
+- Image generates after refresh.
+- Host on platforms like Railway, Heroku, AWS (not Vercel/Render).
+- GitHub Repo: https://github.com/slattware/hng13-stage0-backend
