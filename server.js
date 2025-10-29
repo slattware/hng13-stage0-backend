@@ -1,354 +1,345 @@
-const crypto = require('crypto')
-require('dotenv').config();
+const express = require('express');
+const mysql = require('mysql2/promise'); // Using promise version for async/await
+const dotenv = require('dotenv');
+const axios = require('axios');
+const { Jimp, loadFont, measureText } = require("jimp");
+const { SANS_32_BLACK } = require("jimp/fonts");
 
-const fastify = require('fastify')({
-    logger: {
-        level: process.env.LOG_LEVEL || 'info', 
-        // prettyPrint: process.env.NODE_ENV !== 'production'
-    }
+const fs = require('fs');
+const path = require('path');
+
+dotenv.config();
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
-const fastifyCors = require('@fastify/cors');
 
-// Register CORS
-fastify.register(fastifyCors, {
-    origin: '*',
-});
+app.use(express.json());
 
-// // Define the response schema
-// const responseSchema = {
-//     type: 'object',
-//     properties: {
-//         status: { type: 'string', enum: ['success']},
-//         user: {
-//             type: "object",
-//             required: ['email', 'name', 'stack'],
-//             properties: {
-//                 email: {
-//                     type: 'string',
-//                     format: 'email'
-//                 },
-//                 name: {
-//                     type: 'string'
-//                 },
-//                 stack: {
-//                     type: 'string'
-//                 }
-//             },
-//             additionalProperties: false
-//         },
-//         timestamp: {
-//             type: 'string',
-//             format: 'date-time'
-//         },
-//         fact: {'type': 'string'}
-//     },
-//     required: ['status', 'user', 'timestamp', 'fact']
-// };
-
-// const user = {
-//     email: process.env.USER_EMAIL,
-//     name: process.env.USER_NAME,
-//     stack: process.env.USER_STACK
-// }
-
-// In-memory store for strings
-const stringStore = new Map()
-
-// Helper functions
-function computeStringProperties(value) {
-  const hash = crypto.createHash('sha256').update(value).digest('hex')
-  const lowerValue = value.toLowerCase()
-  const isPalindrome = lowerValue === lowerValue.split('').reverse().join('')
-  const charFrequency = {}
-  for (const char of value) {
-    charFrequency[char] = (charFrequency[char] || 0) + 1
-  }
-  const uniqueChars = Object.keys(charFrequency).length
-  const wordCount = value.trim().split(/\s+/).length
-
-  return {
-    length: value.length,
-    is_palindrome: isPalindrome,
-    unique_characters: uniqueChars,
-    word_count: wordCount,
-    sha256_hash: hash,
-    character_frequency_map: charFrequency
-  }
+// Create cache directory if it doesn't exist
+const cacheDir = path.join(__dirname, 'cache');
+if (!fs.existsSync(cacheDir)) {
+  fs.mkdirSync(cacheDir, { recursive: true });
 }
 
-function parseNaturalLanguageQuery(query) {
-  query = query.toLowerCase()
-  const filters = {}
-
-  if (query.includes('single word')) {
-    filters.word_count = 1
-  }
-  if (query.includes('palindromic') || query.includes('palindrome')) {
-    filters.is_palindrome = true
-  }
-  if (query.includes('longer than')) {
-    const match = query.match(/longer than (\d+)/)
-    if (match) filters.min_length = parseInt(match[1]) + 1
-  }
-  if (query.includes('contain') && query.includes('vowel')) {
-    filters.contains_character = 'a'
-  }
-  if (query.includes('letter')) {
-    const match = query.match(/letter (\w)/)
-    if (match) filters.contains_character = match[1]
-  }
-
-  return filters
-}
-
-// Schema definitions
-const stringSchema = {
-  type: 'object',
-  required: ['value'],
-  properties: {
-    value: { type: 'string' }
-  }
-}
-
-const querySchema = {
-  type: 'object',
-  properties: {
-    is_palindrome: { type: 'boolean' },
-    min_length: { type: 'integer', minimum: 0 },
-    max_length: { type: 'integer', minimum: 0 },
-    word_count: { type: 'integer', minimum: 0 },
-    contains_character: { type: 'string', maxLength: 1 }
-  }
-}
-
-// Routes
-fastify.post('/strings', {
-  schema: {
-    body: stringSchema,
-    response: {
-      201: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' },
-          value: { type: 'string' },
-          properties: { type: 'object' },
-          created_at: { type: 'string', format: 'date-time' }
-        }
-      }
-    }
-  }
-}, async (request, reply) => {
-  const { value } = request.body
-  if (!value || typeof value !== 'string') {
-    return reply.code(422).send({ error: 'Invalid data type for "value" (must be string)' })
-  }
-
-  const properties = computeStringProperties(value)
-  if (stringStore.has(properties.sha256_hash)) {
-    return reply.code(409).send({ error: 'String already exists in the system' })
-  }
-  console.log(properties);
-
-  const stringData = {
-    id: properties.sha256_hash,
-    value,
-    properties,
-    created_at: new Date().toISOString()
-  }
-  console.log('mil')
-  console.log(properties)
-  console.log(stringData)
-
-  stringStore.set(properties.sha256_hash, stringData)
-  console.log(stringData)
-  return stringData;
-})
-
-fastify.get('/strings/:value', async (request, reply) => {
-  const value = request.params.value
-  const hash = crypto.createHash('sha256').update(value).digest('hex')
-  
-  const stringData = stringStore.get(hash)
-  if (!stringData) {
-    return reply.code(404).send({ error: 'String deos not exist in the system' })
-  }
-
-  return stringData
-})
-
-fastify.get('/strings', {
-  schema: {
-    querystring: querySchema
-  }
-}, async (request, reply) => {
-  const { is_palindrome, min_length, max_length, word_count, contains_character } = request.query
-  const filters = { is_palindrome, min_length, max_length, word_count, contains_character }
-
-  if (Object.values(filters).some(val => val !== undefined)) {
-    // Validate query parameters
-    if (min_length && isNaN(min_length)) {
-      return reply.code(400).send({ error: 'Invalid min_length' })
-    }
-    if (max_length && isNaN(max_length)) {
-      return reply.code(400).send({ error: 'Invalid max_length' })
-    }
-    if (word_count && isNaN(word_count)) {
-      return reply.code(400).send({ error: 'Invalid word_count' })
-    }
-    if (contains_character && contains_character.length !== 1) {
-      return reply.code(400).send({ error: 'contains_character must be a single character' })
-    }
-  }
-
-  const results = Array.from(stringStore.values()).filter(item => {
-    const props = item.properties
-    return (
-      (is_palindrome === undefined || props.is_palindrome === is_palindrome) &&
-      (min_length === undefined || props.length >= min_length) &&
-      (max_length === undefined || props.length <= max_length) &&
-      (word_count === undefined || props.word_count === word_count) &&
-      (contains_character === undefined || item.value.includes(contains_character))
-    )
-  })
-
-  return {
-    data: results,
-    count: results.length,
-    filters_applied: filters
-  }
-})
-
-fastify.get('/strings/filter-by-natural-language', async (request, reply) => {
-  const { query } = request.query
-  if (!query) {
-    return reply.code(400).send({ error: 'Query parameter is required' })
-  }
-
+// Initialize database table on startup
+(async () => {
   try {
-    const parsedFilters = parseNaturalLanguageQuery(query)
-    if (Object.keys(parsedFilters).length === 0) {
-      return reply.code(400).send({ error: 'Unable to parse natural language query' })
+    const createTableQuery = `
+      CREATE TABLE IF NOT EXISTS countries (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        capital VARCHAR(255),
+        region VARCHAR(255),
+        population BIGINT NOT NULL,
+        currency_code VARCHAR(3),
+        exchange_rate DECIMAL(15,4),
+        estimated_gdp DECIMAL(20,2),
+        flag_url VARCHAR(255),
+        last_refreshed_at DATETIME
+      )
+    `;
+    await pool.query(createTableQuery);
+    console.log('Database table initialized');
+  } catch (err) {
+    console.error('Error initializing database:', err);
+    process.exit(1);
+  }
+})();
+
+// GET /countries/image - Serve summary image
+app.get('/countries/image', (req, res) => {
+  const imagePath = path.join(cacheDir, 'summary.png');
+  if (fs.existsSync(imagePath)) {
+    res.sendFile(imagePath);
+  } else {
+    res.status(404).json({ error: 'Summary image not found' });
+  }
+});
+
+// POST /countries/refresh - Fetch and cache countries
+app.post('/countries/refresh', async (req, res) => {
+  try {
+    // Fetch countries data
+    let countriesResponse;
+    try {
+      countriesResponse = await axios.get('https://restcountries.com/v2/all?fields=name,capital,region,population,flag,currencies');
+    } catch (err) {
+      return res.status(503).json({
+        error: 'External data source unavailable',
+        details: 'Could not fetch data from Countries API'
+      });
     }
 
-    const results = Array.from(stringStore.values()).filter(item => {
-      const props = item.properties
-      return (
-        (parsedFilters.is_palindrome === undefined || props.is_palindrome === parsedFilters.is_palindrome) &&
-        (parsedFilters.min_length === undefined || props.length >= parsedFilters.min_length) &&
-        (parsedFilters.word_count === undefined || props.word_count === parsedFilters.word_count) &&
-        (parsedFilters.contains_character === undefined || item.value.includes(parsedFilters.contains_character))
-      )
-    })
+    // Fetch exchange rates
+    let exchangeResponse;
+    try {
+      exchangeResponse = await axios.get(`https://v6.exchangerate-api.com/v6/${process.env.EXCHANGE_RATE_API_KEY}/latest/USD`);
+      if ( exchangeResponse.result === "error") {
+        throw new Error(exchangeResponse['error-type'])
+      }
+    } catch (err) {
+      return res.status(503).json({
+        error: 'External data source unavailable' + err,
+        details: 'Could not fetch data from Exchange Rates API'
+      });
+    }
 
-    return {
-      data: results,
-      count: results.length,
-      interpreted_query: {
-        original: query,
-        parsed_filters: parsedFilters
+    const countries = countriesResponse.data;
+    const rates = exchangeResponse.data.conversion_rates;
+
+    for (const country of countries) {
+      // Validation: Skip if required fields missing
+      if (!country.name || typeof country.population !== 'number') {
+        console.warn(`Skipping invalid country data: ${country.name || 'Unknown'}`);
+        continue;
+      }
+
+      let currency_code = country.currencies?.[0]?.code || null;
+      let exchange_rate = null;
+      if (currency_code && rates[currency_code]) {
+        exchange_rate = rates[currency_code];
+      }
+
+      const randomMultiplier = Math.random() * 1000 + 1000;
+      let estimated_gdp = null;
+      if (exchange_rate !== null && currency_code !== null) {
+        estimated_gdp = (country.population * randomMultiplier) / exchange_rate;
+      } else if (currency_code === null) {
+        estimated_gdp = 0;
+      }
+
+      const capital = country.capital || null;
+      const region = country.region || null;
+      const flag_url = country.flag || null;
+
+      // Check if country exists (case-insensitive)
+      const [existingRows] = await pool.query(
+        'SELECT id FROM countries WHERE LOWER(name) = LOWER(?)',
+        [country.name]
+      );
+
+      if (existingRows.length > 0) {
+        // Update existing record
+        const id = existingRows[0].id;
+        await pool.query(
+          `UPDATE countries SET 
+            capital = ?, 
+            region = ?, 
+            population = ?, 
+            currency_code = ?, 
+            exchange_rate = ?, 
+            estimated_gdp = ?, 
+            flag_url = ?, 
+            last_refreshed_at = NOW() 
+          WHERE id = ?`,
+          [capital, region, country.population, currency_code, exchange_rate, estimated_gdp, flag_url, id]
+        );
+      } else {
+        // Insert new record
+        await pool.query(
+          `INSERT INTO countries (
+            name, capital, region, population, currency_code, 
+            exchange_rate, estimated_gdp, flag_url, last_refreshed_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          [country.name, capital, region, country.population, currency_code, exchange_rate, estimated_gdp, flag_url]
+        );
       }
     }
-  } catch (error) {
-    return reply.code(422).send({ error: 'Query parsed but resulted in conflicting filters' })
+
+    // Generate summary image after successful refresh
+    await generateSummaryImage();
+
+    res.status(200).json({ message: 'Refresh successful' });
+  } catch (err) {
+    console.error('Error during refresh:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
-})
+});
 
-fastify.delete('/strings/:value', async (request, reply) => {
-  const value = request.params.value
-  const hash = crypto.createHash('sha256').update(value).digest('hex')
-  
-  if (!stringStore.has(hash)) {
-    return reply.code(404).send({ error: 'String does not exist in the system' })
+// Function to generate summary image
+async function generateSummaryImage() {
+  try {
+    const [[totalRow]] = await pool.query('SELECT COUNT(*) as total_countries FROM countries');
+    const total = totalRow.total_countries;
+
+    const [[lastRefreshRow]] = await pool.query('SELECT MAX(last_refreshed_at) as last_refreshed_at FROM countries');
+    const lastRefresh = lastRefreshRow.last_refreshed_at ? lastRefreshRow.last_refreshed_at.toISOString() : 'N/A';
+
+    const [top5Rows] = await pool.query(
+      'SELECT name, estimated_gdp FROM countries WHERE estimated_gdp IS NOT NULL ORDER BY estimated_gdp DESC LIMIT 5'
+    );
+
+    // Create Image
+    const width = 1200;
+    const height = 600;
+    const font = await loadFont(SANS_32_BLACK);
+    const image = new Jimp({ width: width, height: height, color: 0xffffffff }); // White background
+
+    let y = 50;
+    const lineHeight = 50;
+    // const maxTextWidth = width - 100; // 50px margin on each side
+
+    // --- TEXT WRAPPING HELPER ---
+    // const wrapText = (text, maxWidth) => {
+    //   const words = String(text).split(' ');
+    //   const lines = [];
+    //   let currentLine = '';
+
+    //   for (const word of words) {
+    //     const testLine = currentLine ? `${currentLine} ${word}` : word;
+    //     const width = measureText(font, testLine);
+    //     if (width > maxWidth) {
+    //       if (currentLine) lines.push(currentLine);
+    //       currentLine = word;
+    //     } else {
+    //       currentLine = testLine;
+    //     }
+    //   }
+    //   if (currentLine) lines.push(currentLine);
+    //   return lines;
+    // };
+
+    // --- PRINT WITH WRAP ---
+    // const print = (text, align = 'left') => {
+    //   const x = align === 'center' ? width / 2 - (font.measureText(text) / 2) : 50;
+    //   const lines = wrapText(text, maxTextWidth);
+    //   lines.forEach(line => {
+    //     console.log(line)
+    //     console.log(typeof(line))
+    //     image.print({font, x, y, line});
+    //     y += lineHeight;
+    //   });
+    // };
+
+    // Helper to print centered or left-aligned
+    const print = (text, align = 'left') => {
+      const x = align === 'center' ? width / 2 - (font.measureText(text) / 2) : 50;
+      image.print({ font, x, y, text });
+      y += lineHeight;
+    };
+
+    print(`Total Countries: ${total}`);
+    print(`Last Refresh: ${lastRefresh}`);
+    print('');
+    print('Top 5 Countries by Estimated GDP:', 'left');
+    y += 20;
+
+    top5Rows.forEach((row, i) => {
+      const gdp = Number(row.estimated_gdp).toLocaleString('en-US', { maximumFractionDigits: 2 });
+      print(`${i + 1}. ${row.name}: $${gdp}`);
+    });
+
+    // Save
+    const imagePath = path.join(cacheDir, 'summary.png');
+    await image.write(imagePath);
+    console.log('Summary image generated:', imagePath);
+
+    // // Add text
+    // image.print(font, 50, 50, `Total Countries: ${total}`);
+    // image.print(font, 50, 100, `Last Refresh: ${lastRefresh}`);
+    // image.print(font, 50, 150, 'Top 5 Countries by Estimated GDP:');
+
+    // top5Rows.forEach((row, index) => {
+    //   image.print(font, 50, 200 + index * 50, `${index + 1}. ${row.name}: ${row.estimated_gdp.toFixed(2)}`);
+    // });
+
+  } catch (err) {
+    console.error('Error generating summary image:', err);
   }
+}
 
-  stringStore.delete(hash)
-  return reply.code(204).send()
-})
+// GET /countries - List countries with filters and sorting
+app.get('/countries', async (req, res) => {
+  try {
+    let sql = 'SELECT * FROM countries';
+    const params = [];
 
-// // Define the API route with schema validation
-// fastify.get('/me', {
-//     schema: {
-//         response: {
-//             200: responseSchema
-//         }
-//     }
-// }, async (request, reply) => {
-//     try {
-//         // Prepare the response data object
-//             const responseData = {
-//         };
-
-//         const now = new Date().toISOString();
-
-//         const controller = new AbortController();
-//         const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-//         const response = await fetch("https:/catfact.ninja/fact", {
-//             signal: controller.signal
-//         });
-        
-//         clearTimeout(timeoutId); 
-
-//          if (!response.ok) {
-//              throw new Error('Cat API is not working');
-//          }
-//          const catFactData = await response.json();
-//          responseData.fact = catFactData.fact;
-//          responseData.user = user;
-//          responseData.status = "success";
-//          responseData.timestamp = now;
-
-//         // Set the response type to JSON
-//         reply.type('application/json');
-//         // Send the response
-//         return responseData;
-//     } catch (error) {
-//         // Log the error for debugging
-//         fastify.log.error(error);
-//         if ( error.name = "Abort Error" ) {
-//             fastify.log.warn('Cats API is not working')
-//         }
-//         if (error.message === 'nil') {
-//             // Respond with 400
-//             return reply.status(400).send({
-//                 number: '',
-//                 error: true
-//             });
-//         }
-//         else if ( error.message ) {
-//             // Respond with 400
-//             return reply.status(400).send({
-//                 number: error.message,
-//                 error: true
-//             });
-//         }
-//         else {
-//             // Respond with 500
-//             return reply.status(500).send({
-//                 error: 'Internal Server Error',
-//                 message: 'An unexpected error occurred while processing your request.'
-//             });
-//         }
-//     }
-// });
-
-fastify.get('/', async(request, reply) => {
-    return {status: 'API is running'};
-})
-
-// Set the port and host
-const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || 'localhost';
-
-// Start the server
-const start = async () => {
-    try {
-        await fastify.listen({ host: '0.0.0.0', port: PORT });
-        fastify.log.info(`Server listening on http://${HOST}:${PORT} in ${process.env.NODE_ENV} mode`);
-    } catch (err) {
-        fastify.log.error(err);
-        process.exit(1);
+    const whereClauses = [];
+    if (req.query.region) {
+      whereClauses.push('region = ?');
+      params.push(req.query.region);
     }
-};
+    if (req.query.currency) {
+      whereClauses.push('currency_code = ?');
+      params.push(req.query.currency);
+    }
 
-start();
+    if (whereClauses.length > 0) {
+      sql += ' WHERE ' + whereClauses.join(' AND ');
+    }
+
+    if (req.query.sort === 'gdp_desc') {
+      sql += ' ORDER BY estimated_gdp DESC';
+    } else if (req.query.sort === 'gdp_asc') {
+      sql += ' ORDER BY estimated_gdp ASC';
+    }
+
+    const [rows] = await pool.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching countries:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /countries/:name - Get one country
+app.get('/countries/:name', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM countries WHERE LOWER(name) = LOWER(?)',
+      [req.params.name]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Country not found' });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Error fetching country:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /countries/:name - Delete a country
+app.delete('/countries/:name', async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      'DELETE FROM countries WHERE LOWER(name) = LOWER(?)',
+      [req.params.name]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Country not found' });
+    }
+    res.status(200).json({ message: 'Country deleted' });
+  } catch (err) {
+    console.error('Error deleting country:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /status - Show status
+app.get('/status', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT COUNT(*) as total_countries, MAX(last_refreshed_at) as last_refreshed_at FROM countries'
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Error fetching status:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
